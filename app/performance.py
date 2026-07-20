@@ -1,1 +1,181 @@
-from __future__ import annotations  import math from collections import defaultdict, deque  import aiosqlite  from . import db as store from .config import DB_PATH, INITIAL_CASH from .quotes import get_quotes   async def compute_performance(user_id: str) -> dict:     async with aiosqlite.connect(DB_PATH) as conn:         await store.ensure_user(conn, user_id)         await conn.commit()         cash_now = await store.get_cash(conn, user_id)         positions = await store.list_positions(conn, user_id)         # 鍏ㄩ噺鎴愪氦锛屾寜鏃堕棿姝ｅ簭閲嶅缓         cur = await conn.execute(             """             SELECT id, side, code, name, qty, price, amount, commission, created_at             FROM orders             WHERE user_id = ?             ORDER BY id ASC             """,             (user_id,),         )         rows = await cur.fetchall()      orders = [         {             "id": r[0],             "side": r[1],             "code": r[2],             "name": r[3],             "qty": float(r[4]),             "price": float(r[5]),             "amount": float(r[6]),             "commission": float(r[7]),             "created_at": r[8],         }         for r in rows     ]      codes = list({o["code"] for o in orders} | {p["code"] for p in positions})     quote_map = {         q["code"]: q         for q in await get_quotes(codes)         if "code" in q and "error" not in q     }      cash = float(INITIAL_CASH)     lots: dict[str, deque] = defaultdict(deque)  # code -> deque[[qty, cost]]     last_price: dict[str, float] = {}     equity_curve: list[dict] = [         {"time": "start", "equity": round(INITIAL_CASH, 2), "cash": round(INITIAL_CASH, 2)}     ]      wins = 0     losses = 0     flat = 0     realized_pnl = 0.0      def mark_equity(label: str) -> float:         mv = 0.0         for code, q in lots.items():             qty = sum(x[0] for x in q)             if qty <= 0:                 continue             px = last_price.get(code) or (quote_map.get(code) or {}).get("price") or 0.0             mv += qty * float(px)         eq = cash + mv         equity_curve.append(             {"time": label, "equity": round(eq, 2), "cash": round(cash, 2)}         )         return eq      for o in orders:         code = o["code"]         last_price[code] = o["price"]         if o["side"] == "buy":             cash -= o["amount"] + o["commission"]             lots[code].append([o["qty"], o["price"]])         else:             remain = o["qty"]             proceeds = o["amount"] - o["commission"]             cash += proceeds             sell_px = o["price"]             while remain > 1e-9 and lots[code]:                 lot_qty, lot_cost = lots[code][0]                 take = min(remain, lot_qty)                 pnl = (sell_px - lot_cost) * take                 realized_pnl += pnl                 if pnl > 1e-8:                     wins += 1                 elif pnl < -1e-8:                     losses += 1                 else:                     flat += 1                 lot_qty -= take                 remain -= take                 if lot_qty <= 1e-9:                     lots[code].popleft()                 else:                     lots[code][0][0] = lot_qty             if remain > 1e-6:                 # 鏃犳垚鏈簳浠擄紝璁颁负鏈煡                 flat += 1         mark_equity(o["created_at"])      # 褰撳墠甯傚€肩偣     for p in positions:         last_price[p["code"]] = float(             (quote_map.get(p["code"]) or {}).get("price") or p["cost"]         )     # 鐢ㄧ湡瀹炴寔浠?鐜伴噾鏍℃缁堢偣     market_value = 0.0     for p in positions:         px = float((quote_map.get(p["code"]) or {}).get("price") or p["cost"])         market_value += px * p["qty"]     equity_now = cash_now + market_value     equity_curve.append(         {             "time": "now",             "equity": round(equity_now, 2),             "cash": round(cash_now, 2),         }     )      # 鍘婚噸杩囧瘑鐐癸細淇濈暀 start銆佹瘡绗斿悗銆乶ow     total_return = equity_now / INITIAL_CASH - 1     total_pnl = equity_now - INITIAL_CASH      # 鏈€澶у洖鎾?    peak = -1e18     max_dd = 0.0     for pt in equity_curve:         eq = pt["equity"]         peak = max(peak, eq)         if peak > 0:             dd = eq / peak - 1             max_dd = min(max_dd, dd)      # 绮楃畻澶忔櫘锛氱敤鐩搁偦鏉冪泭鐐规敹鐩?    rets = []     for i in range(1, len(equity_curve)):         a = equity_curve[i - 1]["equity"]         b = equity_curve[i]["equity"]         if a > 0:             rets.append(b / a - 1)     sharpe = None     if len(rets) >= 2:         mean = sum(rets) / len(rets)         var = sum((x - mean) ** 2 for x in rets) / (len(rets) - 1)         std = math.sqrt(var)         if std > 1e-12:             # 闈炴棩棰戯紝浠呬綔鐩稿姣旇緝鐨勨€滅矖绯欏鏅€?            sharpe = mean / std * math.sqrt(len(rets))      closed = wins + losses + flat     win_rate = (wins / (wins + losses) * 100) if (wins + losses) else None      return {         "user_id": user_id,         "initial_cash": INITIAL_CASH,         "cash": round(cash_now, 2),         "market_value": round(market_value, 2),         "equity": round(equity_now, 2),         "total_pnl": round(total_pnl, 2),         "total_return_pct": round(total_return * 100, 2),         "max_drawdown_pct": round(max_dd * 100, 2),         "sharpe_rough": round(sharpe, 3) if sharpe is not None else None,         "trades": len(orders),         "closed_lots": closed,         "wins": wins,         "losses": losses,         "win_rate_pct": round(win_rate, 2) if win_rate is not None else None,         "realized_pnl": round(realized_pnl, 2),         "equity_curve": equity_curve,     }
+from __future__ import annotations
+
+import math
+from collections import defaultdict, deque
+
+import aiosqlite
+
+from . import db as store
+from .config import DB_PATH, INITIAL_CASH
+from .quotes import get_quotes
+
+
+async def compute_performance(user_id: str) -> dict:
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await store.ensure_user(conn, user_id)
+        await conn.commit()
+        cash_now = await store.get_cash(conn, user_id)
+        positions = await store.list_positions(conn, user_id)
+        # 全量成交，按时间正序重建
+        cur = await conn.execute(
+            """
+            SELECT id, side, code, name, qty, price, amount, commission, created_at
+            FROM orders
+            WHERE user_id = ?
+            ORDER BY id ASC
+            """,
+            (user_id,),
+        )
+        rows = await cur.fetchall()
+
+    orders = [
+        {
+            "id": r[0],
+            "side": r[1],
+            "code": r[2],
+            "name": r[3],
+            "qty": float(r[4]),
+            "price": float(r[5]),
+            "amount": float(r[6]),
+            "commission": float(r[7]),
+            "created_at": r[8],
+        }
+        for r in rows
+    ]
+
+    codes = list({o["code"] for o in orders} | {p["code"] for p in positions})
+    quote_map = {
+        q["code"]: q
+        for q in await get_quotes(codes)
+        if "code" in q and "error" not in q
+    }
+
+    cash = float(INITIAL_CASH)
+    lots: dict[str, deque] = defaultdict(deque)  # code -> deque[[qty, cost]]
+    last_price: dict[str, float] = {}
+    equity_curve: list[dict] = [
+        {"time": "start", "equity": round(INITIAL_CASH, 2), "cash": round(INITIAL_CASH, 2)}
+    ]
+
+    wins = 0
+    losses = 0
+    flat = 0
+    realized_pnl = 0.0
+
+    def mark_equity(label: str) -> float:
+        mv = 0.0
+        for code, q in lots.items():
+            qty = sum(x[0] for x in q)
+            if qty <= 0:
+                continue
+            px = last_price.get(code) or (quote_map.get(code) or {}).get("price") or 0.0
+            mv += qty * float(px)
+        eq = cash + mv
+        equity_curve.append(
+            {"time": label, "equity": round(eq, 2), "cash": round(cash, 2)}
+        )
+        return eq
+
+    for o in orders:
+        code = o["code"]
+        last_price[code] = o["price"]
+        if o["side"] == "buy":
+            cash -= o["amount"] + o["commission"]
+            lots[code].append([o["qty"], o["price"]])
+        else:
+            remain = o["qty"]
+            proceeds = o["amount"] - o["commission"]
+            cash += proceeds
+            sell_px = o["price"]
+            while remain > 1e-9 and lots[code]:
+                lot_qty, lot_cost = lots[code][0]
+                take = min(remain, lot_qty)
+                pnl = (sell_px - lot_cost) * take
+                realized_pnl += pnl
+                if pnl > 1e-8:
+                    wins += 1
+                elif pnl < -1e-8:
+                    losses += 1
+                else:
+                    flat += 1
+                lot_qty -= take
+                remain -= take
+                if lot_qty <= 1e-9:
+                    lots[code].popleft()
+                else:
+                    lots[code][0][0] = lot_qty
+            if remain > 1e-6:
+                # 无成本底仓，记为未知
+                flat += 1
+        mark_equity(o["created_at"])
+
+    # 当前市值点
+    for p in positions:
+        last_price[p["code"]] = float(
+            (quote_map.get(p["code"]) or {}).get("price") or p["cost"]
+        )
+    # 用真实持仓/现金校正终点
+    market_value = 0.0
+    for p in positions:
+        px = float((quote_map.get(p["code"]) or {}).get("price") or p["cost"])
+        market_value += px * p["qty"]
+    equity_now = cash_now + market_value
+    equity_curve.append(
+        {
+            "time": "now",
+            "equity": round(equity_now, 2),
+            "cash": round(cash_now, 2),
+        }
+    )
+
+    # 去重过密点：保留 start、每笔后、now
+    total_return = equity_now / INITIAL_CASH - 1
+    total_pnl = equity_now - INITIAL_CASH
+
+    # 最大回撤
+    peak = -1e18
+    max_dd = 0.0
+    for pt in equity_curve:
+        eq = pt["equity"]
+        peak = max(peak, eq)
+        if peak > 0:
+            dd = eq / peak - 1
+            max_dd = min(max_dd, dd)
+
+    # 粗算夏普：用相邻权益点收益
+    rets = []
+    for i in range(1, len(equity_curve)):
+        a = equity_curve[i - 1]["equity"]
+        b = equity_curve[i]["equity"]
+        if a > 0:
+            rets.append(b / a - 1)
+    sharpe = None
+    if len(rets) >= 2:
+        mean = sum(rets) / len(rets)
+        var = sum((x - mean) ** 2 for x in rets) / (len(rets) - 1)
+        std = math.sqrt(var)
+        if std > 1e-12:
+            # 非日频，仅作相对比较的“粗糙夏普”
+            sharpe = mean / std * math.sqrt(len(rets))
+
+    closed = wins + losses + flat
+    win_rate = (wins / (wins + losses) * 100) if (wins + losses) else None
+
+    return {
+        "user_id": user_id,
+        "initial_cash": INITIAL_CASH,
+        "cash": round(cash_now, 2),
+        "market_value": round(market_value, 2),
+        "equity": round(equity_now, 2),
+        "total_pnl": round(total_pnl, 2),
+        "total_return_pct": round(total_return * 100, 2),
+        "max_drawdown_pct": round(max_dd * 100, 2),
+        "sharpe_rough": round(sharpe, 3) if sharpe is not None else None,
+        "trades": len(orders),
+        "closed_lots": closed,
+        "wins": wins,
+        "losses": losses,
+        "win_rate_pct": round(win_rate, 2) if win_rate is not None else None,
+        "realized_pnl": round(realized_pnl, 2),
+        "equity_curve": equity_curve,
+    }

@@ -1,1 +1,21 @@
-import os from pathlib import Path  BASE_DIR = Path(__file__).resolve().parent.parent DATA_DIR = BASE_DIR / "data" DB_PATH = DATA_DIR / "paper.db"  INITIAL_CASH = 1_000_000.0 COMMISSION_RATE = 0.00005  # 涓囦竴浣ｉ噾杩戜技 MIN_COMMISSION = 0.1  HOST = os.getenv("HOST", "0.0.0.0") PORT = int(os.getenv("PORT", "8765"))  # HTTP USER_AGENT = (     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "     "AppleWebKit/537.36 (KHTML, like Gecko) "     "Chrome/126.0.0.0 Safari/537.36" ) TIMEOUT = 8.0
+import os
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = BASE_DIR / "data"
+DB_PATH = DATA_DIR / "paper.db"
+
+INITIAL_CASH = 1_000_000.0
+COMMISSION_RATE = 0.00005  # 万一佣金近似
+MIN_COMMISSION = 0.1
+
+HOST = os.getenv("HOST", "0.0.0.0")
+PORT = int(os.getenv("PORT", "8765"))
+
+# HTTP
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/126.0.0.0 Safari/537.36"
+)
+TIMEOUT = 8.0

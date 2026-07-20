@@ -1,1 +1,310 @@
-from __future__ import annotations  import re import uuid from contextlib import asynccontextmanager from pathlib import Path  import aiosqlite from fastapi import FastAPI, HTTPException, Query, Request, Response from fastapi.middleware.cors import CORSMiddleware from fastapi.responses import FileResponse from fastapi.staticfiles import StaticFiles from pydantic import BaseModel, Field from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  from . import db as store from .broker import dashboard_snapshot, place_order, portfolio_snapshot from .codes import normalize_code from .config import DB_PATH, HOST, INITIAL_CASH, PORT from .performance import compute_performance from .quotes import fetch_klines, get_quote, get_quotes from .screener import screen_market  COOKIE_NAME = "paper_uid" COOKIE_MAX_AGE = 365 * 24 * 3600 UID_RE = re.compile(r"^[a-zA-Z0-9_-]{8,64}$")   @asynccontextmanager async def lifespan(_: FastAPI):     await store.init_db()     yield   app = FastAPI(title="Paper Trading Sim", version="1.3.0", lifespan=lifespan) # Render / Railway 绛夊弽鍚戜唬鐞嗛渶瑕佹纭瘑鍒?HTTPS app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*") app.add_middleware(     CORSMiddleware,     allow_origins=["*"],     allow_credentials=True,     allow_methods=["*"],     allow_headers=["*"], ) STATIC_DIR = Path(__file__).resolve().parent.parent / "static" app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")   class OrderIn(BaseModel):     code: str = Field(..., description="鑲＄エ/鍙浆鍊轰唬鐮侊紝濡?118046 鎴?600519")     side: str = Field(..., description="buy 鎴?sell")     qty: float = Field(..., gt=0, description="鏁伴噺锛氳偂绁ㄤ负鑲★紝鍙浆鍊轰负寮?)     price: float | None = Field(None, description="闄愪环锛涗负绌哄垯鐢ㄦ渶鏂颁环/鏄ㄦ敹甯備环鎾悎")   class WatchIn(BaseModel):     code: str   def _new_uid() -> str:     return uuid.uuid4().hex   def _is_https(request: Request) -> bool:     proto = request.headers.get("x-forwarded-proto", "")     if proto:         return proto.split(",")[0].strip().lower() == "https"     return request.url.scheme == "https"   def _cookie_kwargs(request: Request) -> dict:     return {         "max_age": COOKIE_MAX_AGE,         "httponly": True,         "samesite": "lax",         "path": "/",         "secure": _is_https(request),     }   def _read_uid(request: Request) -> str | None:     raw = request.cookies.get(COOKIE_NAME, "").strip()     if raw and UID_RE.match(raw):         return raw     return None   async def get_or_create_user(request: Request, response: Response) -> str:     uid = _read_uid(request)     if not uid:         uid = _new_uid()         response.set_cookie(             key=COOKIE_NAME,             value=uid,             **_cookie_kwargs(request),         )     async with aiosqlite.connect(DB_PATH) as conn:         await store.ensure_user(conn, uid)         await conn.commit()     return uid   def _set_uid_cookie(response: Response, request: Request, uid: str) -> None:     response.set_cookie(         key=COOKIE_NAME,         value=uid,         **_cookie_kwargs(request),     )   @app.get("/") async def index():     return FileResponse(STATIC_DIR / "index.html")   @app.get("/api/health") async def health():     return {"ok": True, "db": str(DB_PATH), "initial_cash": INITIAL_CASH}   @app.get("/api/me") async def api_me(request: Request, response: Response):     uid = await get_or_create_user(request, response)     async with aiosqlite.connect(DB_PATH) as conn:         user = await store.ensure_user(conn, uid)         await conn.commit()     return {         "user_id": uid,         "cash": user["cash"],         "initial_cash": INITIAL_CASH,         "short_id": uid[:8],     }   @app.post("/api/me/new") async def api_me_new(request: Request, response: Response):     """寮€涓€涓叏鏂扮嫭绔嬫ā鎷熻处鎴凤紙鏂?Cookie锛夈€?""     uid = _new_uid()     _set_uid_cookie(response, request, uid)     async with aiosqlite.connect(DB_PATH) as conn:         user = await store.ensure_user(conn, uid)         await conn.commit()     return {         "user_id": uid,         "cash": user["cash"],         "initial_cash": INITIAL_CASH,         "short_id": uid[:8],     }   @app.get("/api/quote/{code}") async def api_quote(code: str):     try:         q = await get_quote(code)     except Exception as exc:  # noqa: BLE001         raise HTTPException(status_code=400, detail=str(exc)) from exc     return q.to_dict()   @app.get("/api/quotes") async def api_quotes(codes: str = Query(..., description="閫楀彿鍒嗛殧浠ｇ爜")):     items = [c.strip() for c in codes.split(",") if c.strip()]     return {"items": await get_quotes(items)}   @app.get("/api/kline/{code}") async def api_kline(     code: str,     period: str = Query("day", description="1m/5m/15m/30m/60m/day/week/month"),     limit: int = Query(120, ge=10, le=500),     indicators: str | None = Query(         None, description="閫楀彿鍒嗛殧: ma,macd,rsi,boll"     ), ):     try:         return await fetch_klines(             code, period=period, limit=limit, indicators=indicators         )     except Exception as exc:  # noqa: BLE001         raise HTTPException(status_code=400, detail=str(exc)) from exc   @app.get("/api/screener") async def api_screener(     universe: str = Query("stock", description="stock/cb/all"),     min_change_pct: float | None = Query(None),     max_change_pct: float | None = Query(None),     min_amount: float | None = Query(None, description="鎴愪氦棰濅笅闄愶紙鍏冿級"),     min_turnover: float | None = Query(None, description="鎹㈡墜鐜?涓嬮檺"),     min_price: float | None = Query(None),     max_price: float | None = Query(None),     sort: str = Query("change_pct"),     limit: int = Query(30, ge=5, le=100), ):     try:         return await screen_market(             universe=universe,             min_change_pct=min_change_pct,             max_change_pct=max_change_pct,             min_amount=min_amount,             min_turnover=min_turnover,             min_price=min_price,             max_price=max_price,             sort=sort,             limit=limit,         )     except Exception as exc:  # noqa: BLE001         raise HTTPException(status_code=400, detail=str(exc)) from exc   @app.get("/api/performance") async def api_performance(request: Request, response: Response):     uid = await get_or_create_user(request, response)     try:         return await compute_performance(uid)     except Exception as exc:  # noqa: BLE001         raise HTTPException(status_code=400, detail=str(exc)) from exc   @app.get("/api/account") async def api_account(request: Request, response: Response):     uid = await get_or_create_user(request, response)     return await portfolio_snapshot(uid)   @app.get("/api/dashboard") async def api_dashboard(     request: Request,     response: Response,     focus: str | None = Query(None, description="褰撳墠涓嬪崟浠ｇ爜"), ):     uid = await get_or_create_user(request, response)     data = await dashboard_snapshot(uid, focus)     data["short_id"] = uid[:8]     return data   @app.post("/api/order") async def api_order(body: OrderIn, request: Request, response: Response):     uid = await get_or_create_user(request, response)     try:         return await place_order(             user_id=uid,             side=body.side,             raw_code=body.code,             qty=body.qty,             limit_price=body.price,         )     except Exception as exc:  # noqa: BLE001         raise HTTPException(status_code=400, detail=str(exc)) from exc   @app.get("/api/watchlist") async def api_watchlist(request: Request, response: Response):     uid = await get_or_create_user(request, response)     data = await dashboard_snapshot(uid, None)     return {"items": data["watchlist"]}   @app.post("/api/watchlist") async def api_watchlist_add(body: WatchIn, request: Request, response: Response):     uid = await get_or_create_user(request, response)     try:         q = await get_quote(body.code)         code = q.code         name = q.name         market = q.market     except Exception as exc:  # noqa: BLE001         raise HTTPException(status_code=400, detail=str(exc)) from exc      async with aiosqlite.connect(DB_PATH) as conn:         await store.add_watchlist(             conn, uid, code=code, name=name, market=market         )         await conn.commit()         items = await store.list_watchlist(conn, uid)     return {"ok": True, "items": items}   @app.delete("/api/watchlist/{code}") async def api_watchlist_remove(code: str, request: Request, response: Response):     uid = await get_or_create_user(request, response)     try:         _, code6 = normalize_code(code)     except Exception as exc:  # noqa: BLE001         raise HTTPException(status_code=400, detail=str(exc)) from exc     async with aiosqlite.connect(DB_PATH) as conn:         await store.remove_watchlist(conn, uid, code6)         await conn.commit()         items = await store.list_watchlist(conn, uid)     return {"ok": True, "items": items}   @app.post("/api/reset") async def api_reset(request: Request, response: Response):     uid = await get_or_create_user(request, response)     async with aiosqlite.connect(DB_PATH) as conn:         await store.reset_account(conn, uid)         await conn.commit()     return await portfolio_snapshot(uid)   def run() -> None:     import uvicorn      uvicorn.run("app.main:app", host=HOST, port=PORT, reload=False)   if __name__ == "__main__":     run()
+from __future__ import annotations
+
+import re
+import uuid
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+import aiosqlite
+from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+from . import db as store
+from .broker import dashboard_snapshot, place_order, portfolio_snapshot
+from .codes import normalize_code
+from .config import DB_PATH, HOST, INITIAL_CASH, PORT
+from .performance import compute_performance
+from .quotes import fetch_klines, get_quote, get_quotes
+from .screener import screen_market
+
+COOKIE_NAME = "paper_uid"
+COOKIE_MAX_AGE = 365 * 24 * 3600
+UID_RE = re.compile(r"^[a-zA-Z0-9_-]{8,64}$")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    await store.init_db()
+    yield
+
+
+app = FastAPI(title="Paper Trading Sim", version="1.3.0", lifespan=lifespan)
+# Render / Railway 等反向代理需要正确识别 HTTPS
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+class OrderIn(BaseModel):
+    code: str = Field(..., description="股票/可转债代码，如 118046 或 600519")
+    side: str = Field(..., description="buy 或 sell")
+    qty: float = Field(..., gt=0, description="数量：股票为股，可转债为张")
+    price: float | None = Field(None, description="限价；为空则用最新价/昨收市价撮合")
+
+
+class WatchIn(BaseModel):
+    code: str
+
+
+def _new_uid() -> str:
+    return uuid.uuid4().hex
+
+
+def _is_https(request: Request) -> bool:
+    proto = request.headers.get("x-forwarded-proto", "")
+    if proto:
+        return proto.split(",")[0].strip().lower() == "https"
+    return request.url.scheme == "https"
+
+
+def _cookie_kwargs(request: Request) -> dict:
+    return {
+        "max_age": COOKIE_MAX_AGE,
+        "httponly": True,
+        "samesite": "lax",
+        "path": "/",
+        "secure": _is_https(request),
+    }
+
+
+def _read_uid(request: Request) -> str | None:
+    raw = request.cookies.get(COOKIE_NAME, "").strip()
+    if raw and UID_RE.match(raw):
+        return raw
+    return None
+
+
+async def get_or_create_user(request: Request, response: Response) -> str:
+    uid = _read_uid(request)
+    if not uid:
+        uid = _new_uid()
+        response.set_cookie(
+            key=COOKIE_NAME,
+            value=uid,
+            **_cookie_kwargs(request),
+        )
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await store.ensure_user(conn, uid)
+        await conn.commit()
+    return uid
+
+
+def _set_uid_cookie(response: Response, request: Request, uid: str) -> None:
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=uid,
+        **_cookie_kwargs(request),
+    )
+
+
+@app.get("/")
+async def index():
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/api/health")
+async def health():
+    return {"ok": True, "db": str(DB_PATH), "initial_cash": INITIAL_CASH}
+
+
+@app.get("/api/me")
+async def api_me(request: Request, response: Response):
+    uid = await get_or_create_user(request, response)
+    async with aiosqlite.connect(DB_PATH) as conn:
+        user = await store.ensure_user(conn, uid)
+        await conn.commit()
+    return {
+        "user_id": uid,
+        "cash": user["cash"],
+        "initial_cash": INITIAL_CASH,
+        "short_id": uid[:8],
+    }
+
+
+@app.post("/api/me/new")
+async def api_me_new(request: Request, response: Response):
+    """开一个全新独立模拟账户（新 Cookie）。"""
+    uid = _new_uid()
+    _set_uid_cookie(response, request, uid)
+    async with aiosqlite.connect(DB_PATH) as conn:
+        user = await store.ensure_user(conn, uid)
+        await conn.commit()
+    return {
+        "user_id": uid,
+        "cash": user["cash"],
+        "initial_cash": INITIAL_CASH,
+        "short_id": uid[:8],
+    }
+
+
+@app.get("/api/quote/{code}")
+async def api_quote(code: str):
+    try:
+        q = await get_quote(code)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return q.to_dict()
+
+
+@app.get("/api/quotes")
+async def api_quotes(codes: str = Query(..., description="逗号分隔代码")):
+    items = [c.strip() for c in codes.split(",") if c.strip()]
+    return {"items": await get_quotes(items)}
+
+
+@app.get("/api/kline/{code}")
+async def api_kline(
+    code: str,
+    period: str = Query("day", description="1m/5m/15m/30m/60m/day/week/month"),
+    limit: int = Query(120, ge=10, le=500),
+    indicators: str | None = Query(
+        None, description="逗号分隔: ma,macd,rsi,boll"
+    ),
+):
+    try:
+        return await fetch_klines(
+            code, period=period, limit=limit, indicators=indicators
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/screener")
+async def api_screener(
+    universe: str = Query("stock", description="stock/cb/all"),
+    min_change_pct: float | None = Query(None),
+    max_change_pct: float | None = Query(None),
+    min_amount: float | None = Query(None, description="成交额下限（元）"),
+    min_turnover: float | None = Query(None, description="换手率%下限"),
+    min_price: float | None = Query(None),
+    max_price: float | None = Query(None),
+    sort: str = Query("change_pct"),
+    limit: int = Query(30, ge=5, le=100),
+):
+    try:
+        return await screen_market(
+            universe=universe,
+            min_change_pct=min_change_pct,
+            max_change_pct=max_change_pct,
+            min_amount=min_amount,
+            min_turnover=min_turnover,
+            min_price=min_price,
+            max_price=max_price,
+            sort=sort,
+            limit=limit,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/performance")
+async def api_performance(request: Request, response: Response):
+    uid = await get_or_create_user(request, response)
+    try:
+        return await compute_performance(uid)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/account")
+async def api_account(request: Request, response: Response):
+    uid = await get_or_create_user(request, response)
+    return await portfolio_snapshot(uid)
+
+
+@app.get("/api/dashboard")
+async def api_dashboard(
+    request: Request,
+    response: Response,
+    focus: str | None = Query(None, description="当前下单代码"),
+):
+    uid = await get_or_create_user(request, response)
+    data = await dashboard_snapshot(uid, focus)
+    data["short_id"] = uid[:8]
+    return data
+
+
+@app.post("/api/order")
+async def api_order(body: OrderIn, request: Request, response: Response):
+    uid = await get_or_create_user(request, response)
+    try:
+        return await place_order(
+            user_id=uid,
+            side=body.side,
+            raw_code=body.code,
+            qty=body.qty,
+            limit_price=body.price,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/watchlist")
+async def api_watchlist(request: Request, response: Response):
+    uid = await get_or_create_user(request, response)
+    data = await dashboard_snapshot(uid, None)
+    return {"items": data["watchlist"]}
+
+
+@app.post("/api/watchlist")
+async def api_watchlist_add(body: WatchIn, request: Request, response: Response):
+    uid = await get_or_create_user(request, response)
+    try:
+        q = await get_quote(body.code)
+        code = q.code
+        name = q.name
+        market = q.market
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await store.add_watchlist(
+            conn, uid, code=code, name=name, market=market
+        )
+        await conn.commit()
+        items = await store.list_watchlist(conn, uid)
+    return {"ok": True, "items": items}
+
+
+@app.delete("/api/watchlist/{code}")
+async def api_watchlist_remove(code: str, request: Request, response: Response):
+    uid = await get_or_create_user(request, response)
+    try:
+        _, code6 = normalize_code(code)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await store.remove_watchlist(conn, uid, code6)
+        await conn.commit()
+        items = await store.list_watchlist(conn, uid)
+    return {"ok": True, "items": items}
+
+
+@app.post("/api/reset")
+async def api_reset(request: Request, response: Response):
+    uid = await get_or_create_user(request, response)
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await store.reset_account(conn, uid)
+        await conn.commit()
+    return await portfolio_snapshot(uid)
+
+
+def run() -> None:
+    import uvicorn
+
+    uvicorn.run("app.main:app", host=HOST, port=PORT, reload=False)
+
+
+if __name__ == "__main__":
+    run()

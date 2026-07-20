@@ -1,1 +1,385 @@
-from __future__ import annotations  import asyncio import time from dataclasses import dataclass from typing import Optional  import httpx  from .codes import normalize_code from .config import TIMEOUT, USER_AGENT from .indicators import compute_indicators  # 鐭紦瀛橈紝閬垮厤鍓嶇姣忕鎵撶垎澶栭儴琛屾儏 QUOTE_TTL_SEC = 1.5 _quote_cache: dict[str, tuple[float, "Quote"]] = {}   @dataclass class Quote:     code: str     name: str     price: float     prev_close: float     open: float     high: float     low: float     change_pct: float     volume: float     amount: float     market: str     source: str     tradable: bool     note: str = ""      @property     def symbol(self) -> str:         return f"{self.market.lower()}{self.code}"      def to_dict(self) -> dict:         return {             "code": self.code,             "name": self.name,             "market": self.market,             "price": self.price,             "prev_close": self.prev_close,             "open": self.open,             "high": self.high,             "low": self.low,             "change_pct": self.change_pct,             "volume": self.volume,             "amount": self.amount,             "source": self.source,             "tradable": self.tradable,             "note": self.note,         }   KLT_MAP = {     "1m": 1,     "5m": 5,     "15m": 15,     "30m": 30,     "60m": 60,     "day": 101,     "week": 102,     "month": 103, }   def _tencent_prefix(market: str) -> str:     return "sh" if market == "SH" else "sz"   def _secid(market: str, code: str) -> str:     return f"{1 if market == 'SH' else 0}.{code}"   def _headers_em() -> dict:     return {         "User-Agent": USER_AGENT,         "Referer": "https://quote.eastmoney.com/",     }   def _cache_get(code: str) -> Optional[Quote]:     item = _quote_cache.get(code)     if not item:         return None     ts, q = item     if time.monotonic() - ts > QUOTE_TTL_SEC:         return None     return q   def _cache_put(q: Quote) -> None:     _quote_cache[q.code] = (time.monotonic(), q)   def _parse_tencent_payload(payload: str, fallback_code: str, market: str) -> Optional[Quote]:     parts = payload.split("~")     if len(parts) < 6:         return None     code = parts[2] if len(parts) > 2 and parts[2] else fallback_code     name = parts[1]     price = _f(parts[3])     prev = _f(parts[4])     open_ = _f(parts[5])     volume = _f(parts[6]) if len(parts) > 6 else 0.0     high = _f(parts[33]) if len(parts) > 33 else 0.0     low = _f(parts[34]) if len(parts) > 34 else 0.0     change_pct = _f(parts[32]) if len(parts) > 32 else 0.0     amount = _f(parts[37]) * 10000 if len(parts) > 37 else 0.0      live = price > 0 and volume > 0     fill_price = price if price > 0 else prev     note = ""     if not live and fill_price > 0:         note = "鏃犲疄鏃舵垚浜わ紙鍙兘鍋滅墝锛夛紝鎸夋渶鏂颁环/鏄ㄦ敹鎾悎"         if price <= 0:             change_pct = 0.0     if fill_price <= 0:         return None      return Quote(         code=code,         name=name or code,         price=fill_price,         prev_close=prev,         open=open_,         high=high,         low=low,         change_pct=change_pct,         volume=volume,         amount=amount,         market=market,         source="tencent",         tradable=live,         note=note,     )   async def fetch_quotes_tencent_batch(     pairs: list[tuple[str, str]], ) -> dict[str, Quote]:     """pairs: list of (market, code). One HTTP request for many symbols."""     if not pairs:         return {}     symbols = [f"{_tencent_prefix(m)}{c}" for m, c in pairs]     # Tencent allows comma-separated list     url = "https://qt.gtimg.cn/q=" + ",".join(symbols)     headers = {         "User-Agent": USER_AGENT,         "Referer": "https://finance.qq.com/",     }     async with httpx.AsyncClient(timeout=TIMEOUT, headers=headers) as client:         resp = await client.get(url)         resp.raise_for_status()         text = resp.content.decode("gbk", errors="replace")      out: dict[str, Quote] = {}     # lines like: v_sh113052="...";v_sz000001="...";     for chunk in text.split(";"):         chunk = chunk.strip()         if '="' not in chunk:             continue         left, payload = chunk.split('="', 1)         payload = payload.rstrip('"')         # v_sh113052         sym = left.split("_")[-1] if "_" in left else ""         code = sym[2:] if len(sym) > 2 else ""         market = "SH" if sym.startswith("sh") else "SZ"         q = _parse_tencent_payload(payload, code, market)         if q:             out[q.code] = q             _cache_put(q)     return out   async def fetch_quote_tencent(code: str, market: str) -> Optional[Quote]:     got = await fetch_quotes_tencent_batch([(market, code)])     return got.get(code)   async def fetch_quote_eastmoney(code: str, market: str) -> Optional[Quote]:     secid = _secid(market, code)     url = (         "https://push2delay.eastmoney.com/api/qt/stock/get"         f"?fltt=2&invt=2&secid={secid}"         "&fields=f43,f57,f58,f60,f46,f44,f45,f47,f48,f169,f170,f168"     )     async with httpx.AsyncClient(timeout=TIMEOUT, headers=_headers_em()) as client:         resp = await client.get(url)         resp.raise_for_status()         data = resp.json().get("data")     if not data:         return None      price = _f(data.get("f43"))     prev = _f(data.get("f60"))     open_ = _f(data.get("f46"))     high = _f(data.get("f44"))     low = _f(data.get("f45"))     volume = _f(data.get("f47"))     amount = _f(data.get("f48"))     name = str(data.get("f58") or code)     change_pct = _f(data.get("f170"))      tradable = price > 0     fill_price = price if tradable else prev     note = ""     if not tradable and prev > 0:         note = "褰撳墠鏃犳垚浜や环锛屼娇鐢ㄦ槰鏀舵挳鍚?     if fill_price <= 0:         return None      q = Quote(         code=code,         name=name,         price=fill_price,         prev_close=prev,         open=open_,         high=high,         low=low,         change_pct=change_pct,         volume=volume,         amount=amount,         market=market,         source="eastmoney",         tradable=tradable,         note=note,     )     _cache_put(q)     return q   async def get_quote(raw_code: str, *, use_cache: bool = True) -> Quote:     market, code = normalize_code(raw_code)     if use_cache:         cached = _cache_get(code)         if cached:             return cached      errors: list[str] = []     for fetcher in (         lambda: fetch_quote_tencent(code, market),         lambda: fetch_quote_eastmoney(code, market),     ):         try:             q = await fetcher()             if q:                 return q         except Exception as exc:  # noqa: BLE001             errors.append(str(exc))      detail = "; ".join(errors) if errors else "鏃犳湁鏁堣鎯?     raise RuntimeError(f"鑾峰彇琛屾儏澶辫触 [{market}{code}]: {detail}")   async def get_quotes(raw_codes: list[str]) -> list[dict]:     pairs: list[tuple[str, str]] = []     order: list[str] = []     seen: set[str] = set()     for raw in raw_codes:         raw = (raw or "").strip()         if not raw:             continue         try:             market, code = normalize_code(raw)         except Exception:             continue         if code in seen:             continue         seen.add(code)         order.append(code)         pairs.append((market, code))      result_map: dict[str, Quote] = {}     missing: list[tuple[str, str]] = []     for market, code in pairs:         cached = _cache_get(code)         if cached:             result_map[code] = cached         else:             missing.append((market, code))      if missing:         try:             batch = await fetch_quotes_tencent_batch(missing)             result_map.update(batch)         except Exception:             batch = {}          still = [(m, c) for m, c in missing if c not in result_map]         if still:             sem = asyncio.Semaphore(4)              async def one(m: str, c: str) -> None:                 async with sem:                     try:                         q = await fetch_quote_eastmoney(c, m)                         if q:                             result_map[c] = q                     except Exception:                         pass              await asyncio.gather(*(one(m, c) for m, c in still))      out: list[dict] = []     for code in order:         q = result_map.get(code)         if q:             out.append(q.to_dict())         else:             out.append({"code": code, "error": "鏃犳湁鏁堣鎯?})     return out   async def fetch_klines(     raw_code: str,     period: str = "day",     limit: int = 120,     indicators: str | None = None, ) -> dict:     market, code = normalize_code(raw_code)     klt = KLT_MAP.get(period)     if klt is None:         raise ValueError(f"涓嶆敮鎸佺殑鍛ㄦ湡: {period}锛屽彲閫?{', '.join(KLT_MAP)}")      limit = max(10, min(int(limit), 500))     secid = _secid(market, code)     url = (         "https://push2his.eastmoney.com/api/qt/stock/kline/get"         f"?secid={secid}&fields1=f1,f2,f3,f4,f5,f6"         "&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61"         f"&klt={klt}&fqt=1&end=20500101&lmt={limit}"     )     async with httpx.AsyncClient(timeout=TIMEOUT, headers=_headers_em()) as client:         resp = await client.get(url)         resp.raise_for_status()         payload = resp.json()      data = payload.get("data") or {}     raw_lines = data.get("klines") or []     bars = []     for line in raw_lines:         parts = str(line).split(",")         if len(parts) < 6:             continue         bars.append(             {                 "time": parts[0],                 "open": _f(parts[1]),                 "close": _f(parts[2]),                 "high": _f(parts[3]),                 "low": _f(parts[4]),                 "volume": _f(parts[5]),                 "amount": _f(parts[6]) if len(parts) > 6 else 0.0,                 "change_pct": _f(parts[8]) if len(parts) > 8 else 0.0,             }         )      name = str(data.get("name") or code)     out = {         "code": code,         "name": name,         "market": market,         "period": period,         "source": "eastmoney",         "bars": bars,     }     if indicators:         names = [x.strip() for x in indicators.split(",") if x.strip()]         if names:             out["indicators"] = compute_indicators(bars, names)     return out   def _f(v) -> float:     try:         if v is None or v == "" or v == "-":             return 0.0         return float(v)     except (TypeError, ValueError):         return 0.0
+from __future__ import annotations
+
+import asyncio
+import time
+from dataclasses import dataclass
+from typing import Optional
+
+import httpx
+
+from .codes import normalize_code
+from .config import TIMEOUT, USER_AGENT
+from .indicators import compute_indicators
+
+# 短缓存，避免前端每秒打爆外部行情
+QUOTE_TTL_SEC = 1.5
+_quote_cache: dict[str, tuple[float, "Quote"]] = {}
+
+
+@dataclass
+class Quote:
+    code: str
+    name: str
+    price: float
+    prev_close: float
+    open: float
+    high: float
+    low: float
+    change_pct: float
+    volume: float
+    amount: float
+    market: str
+    source: str
+    tradable: bool
+    note: str = ""
+
+    @property
+    def symbol(self) -> str:
+        return f"{self.market.lower()}{self.code}"
+
+    def to_dict(self) -> dict:
+        return {
+            "code": self.code,
+            "name": self.name,
+            "market": self.market,
+            "price": self.price,
+            "prev_close": self.prev_close,
+            "open": self.open,
+            "high": self.high,
+            "low": self.low,
+            "change_pct": self.change_pct,
+            "volume": self.volume,
+            "amount": self.amount,
+            "source": self.source,
+            "tradable": self.tradable,
+            "note": self.note,
+        }
+
+
+KLT_MAP = {
+    "1m": 1,
+    "5m": 5,
+    "15m": 15,
+    "30m": 30,
+    "60m": 60,
+    "day": 101,
+    "week": 102,
+    "month": 103,
+}
+
+
+def _tencent_prefix(market: str) -> str:
+    return "sh" if market == "SH" else "sz"
+
+
+def _secid(market: str, code: str) -> str:
+    return f"{1 if market == 'SH' else 0}.{code}"
+
+
+def _headers_em() -> dict:
+    return {
+        "User-Agent": USER_AGENT,
+        "Referer": "https://quote.eastmoney.com/",
+    }
+
+
+def _cache_get(code: str) -> Optional[Quote]:
+    item = _quote_cache.get(code)
+    if not item:
+        return None
+    ts, q = item
+    if time.monotonic() - ts > QUOTE_TTL_SEC:
+        return None
+    return q
+
+
+def _cache_put(q: Quote) -> None:
+    _quote_cache[q.code] = (time.monotonic(), q)
+
+
+def _parse_tencent_payload(payload: str, fallback_code: str, market: str) -> Optional[Quote]:
+    parts = payload.split("~")
+    if len(parts) < 6:
+        return None
+    code = parts[2] if len(parts) > 2 and parts[2] else fallback_code
+    name = parts[1]
+    price = _f(parts[3])
+    prev = _f(parts[4])
+    open_ = _f(parts[5])
+    volume = _f(parts[6]) if len(parts) > 6 else 0.0
+    high = _f(parts[33]) if len(parts) > 33 else 0.0
+    low = _f(parts[34]) if len(parts) > 34 else 0.0
+    change_pct = _f(parts[32]) if len(parts) > 32 else 0.0
+    amount = _f(parts[37]) * 10000 if len(parts) > 37 else 0.0
+
+    live = price > 0 and volume > 0
+    fill_price = price if price > 0 else prev
+    note = ""
+    if not live and fill_price > 0:
+        note = "无实时成交（可能停牌），按最新价/昨收撮合"
+        if price <= 0:
+            change_pct = 0.0
+    if fill_price <= 0:
+        return None
+
+    return Quote(
+        code=code,
+        name=name or code,
+        price=fill_price,
+        prev_close=prev,
+        open=open_,
+        high=high,
+        low=low,
+        change_pct=change_pct,
+        volume=volume,
+        amount=amount,
+        market=market,
+        source="tencent",
+        tradable=live,
+        note=note,
+    )
+
+
+async def fetch_quotes_tencent_batch(
+    pairs: list[tuple[str, str]],
+) -> dict[str, Quote]:
+    """pairs: list of (market, code). One HTTP request for many symbols."""
+    if not pairs:
+        return {}
+    symbols = [f"{_tencent_prefix(m)}{c}" for m, c in pairs]
+    # Tencent allows comma-separated list
+    url = "https://qt.gtimg.cn/q=" + ",".join(symbols)
+    headers = {
+        "User-Agent": USER_AGENT,
+        "Referer": "https://finance.qq.com/",
+    }
+    async with httpx.AsyncClient(timeout=TIMEOUT, headers=headers) as client:
+        resp = await client.get(url)
+        resp.raise_for_status()
+        text = resp.content.decode("gbk", errors="replace")
+
+    out: dict[str, Quote] = {}
+    # lines like: v_sh113052="...";v_sz000001="...";
+    for chunk in text.split(";"):
+        chunk = chunk.strip()
+        if '="' not in chunk:
+            continue
+        left, payload = chunk.split('="', 1)
+        payload = payload.rstrip('"')
+        # v_sh113052
+        sym = left.split("_")[-1] if "_" in left else ""
+        code = sym[2:] if len(sym) > 2 else ""
+        market = "SH" if sym.startswith("sh") else "SZ"
+        q = _parse_tencent_payload(payload, code, market)
+        if q:
+            out[q.code] = q
+            _cache_put(q)
+    return out
+
+
+async def fetch_quote_tencent(code: str, market: str) -> Optional[Quote]:
+    got = await fetch_quotes_tencent_batch([(market, code)])
+    return got.get(code)
+
+
+async def fetch_quote_eastmoney(code: str, market: str) -> Optional[Quote]:
+    secid = _secid(market, code)
+    url = (
+        "https://push2delay.eastmoney.com/api/qt/stock/get"
+        f"?fltt=2&invt=2&secid={secid}"
+        "&fields=f43,f57,f58,f60,f46,f44,f45,f47,f48,f169,f170,f168"
+    )
+    async with httpx.AsyncClient(timeout=TIMEOUT, headers=_headers_em()) as client:
+        resp = await client.get(url)
+        resp.raise_for_status()
+        data = resp.json().get("data")
+    if not data:
+        return None
+
+    price = _f(data.get("f43"))
+    prev = _f(data.get("f60"))
+    open_ = _f(data.get("f46"))
+    high = _f(data.get("f44"))
+    low = _f(data.get("f45"))
+    volume = _f(data.get("f47"))
+    amount = _f(data.get("f48"))
+    name = str(data.get("f58") or code)
+    change_pct = _f(data.get("f170"))
+
+    tradable = price > 0
+    fill_price = price if tradable else prev
+    note = ""
+    if not tradable and prev > 0:
+        note = "当前无成交价，使用昨收撮合"
+    if fill_price <= 0:
+        return None
+
+    q = Quote(
+        code=code,
+        name=name,
+        price=fill_price,
+        prev_close=prev,
+        open=open_,
+        high=high,
+        low=low,
+        change_pct=change_pct,
+        volume=volume,
+        amount=amount,
+        market=market,
+        source="eastmoney",
+        tradable=tradable,
+        note=note,
+    )
+    _cache_put(q)
+    return q
+
+
+async def get_quote(raw_code: str, *, use_cache: bool = True) -> Quote:
+    market, code = normalize_code(raw_code)
+    if use_cache:
+        cached = _cache_get(code)
+        if cached:
+            return cached
+
+    errors: list[str] = []
+    for fetcher in (
+        lambda: fetch_quote_tencent(code, market),
+        lambda: fetch_quote_eastmoney(code, market),
+    ):
+        try:
+            q = await fetcher()
+            if q:
+                return q
+        except Exception as exc:  # noqa: BLE001
+            errors.append(str(exc))
+
+    detail = "; ".join(errors) if errors else "无有效行情"
+    raise RuntimeError(f"获取行情失败 [{market}{code}]: {detail}")
+
+
+async def get_quotes(raw_codes: list[str]) -> list[dict]:
+    pairs: list[tuple[str, str]] = []
+    order: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_codes:
+        raw = (raw or "").strip()
+        if not raw:
+            continue
+        try:
+            market, code = normalize_code(raw)
+        except Exception:
+            continue
+        if code in seen:
+            continue
+        seen.add(code)
+        order.append(code)
+        pairs.append((market, code))
+
+    result_map: dict[str, Quote] = {}
+    missing: list[tuple[str, str]] = []
+    for market, code in pairs:
+        cached = _cache_get(code)
+        if cached:
+            result_map[code] = cached
+        else:
+            missing.append((market, code))
+
+    if missing:
+        try:
+            batch = await fetch_quotes_tencent_batch(missing)
+            result_map.update(batch)
+        except Exception:
+            batch = {}
+
+        still = [(m, c) for m, c in missing if c not in result_map]
+        if still:
+            sem = asyncio.Semaphore(4)
+
+            async def one(m: str, c: str) -> None:
+                async with sem:
+                    try:
+                        q = await fetch_quote_eastmoney(c, m)
+                        if q:
+                            result_map[c] = q
+                    except Exception:
+                        pass
+
+            await asyncio.gather(*(one(m, c) for m, c in still))
+
+    out: list[dict] = []
+    for code in order:
+        q = result_map.get(code)
+        if q:
+            out.append(q.to_dict())
+        else:
+            out.append({"code": code, "error": "无有效行情"})
+    return out
+
+
+async def fetch_klines(
+    raw_code: str,
+    period: str = "day",
+    limit: int = 120,
+    indicators: str | None = None,
+) -> dict:
+    market, code = normalize_code(raw_code)
+    klt = KLT_MAP.get(period)
+    if klt is None:
+        raise ValueError(f"不支持的周期: {period}，可选 {', '.join(KLT_MAP)}")
+
+    limit = max(10, min(int(limit), 500))
+    secid = _secid(market, code)
+    url = (
+        "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+        f"?secid={secid}&fields1=f1,f2,f3,f4,f5,f6"
+        "&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61"
+        f"&klt={klt}&fqt=1&end=20500101&lmt={limit}"
+    )
+    async with httpx.AsyncClient(timeout=TIMEOUT, headers=_headers_em()) as client:
+        resp = await client.get(url)
+        resp.raise_for_status()
+        payload = resp.json()
+
+    data = payload.get("data") or {}
+    raw_lines = data.get("klines") or []
+    bars = []
+    for line in raw_lines:
+        parts = str(line).split(",")
+        if len(parts) < 6:
+            continue
+        bars.append(
+            {
+                "time": parts[0],
+                "open": _f(parts[1]),
+                "close": _f(parts[2]),
+                "high": _f(parts[3]),
+                "low": _f(parts[4]),
+                "volume": _f(parts[5]),
+                "amount": _f(parts[6]) if len(parts) > 6 else 0.0,
+                "change_pct": _f(parts[8]) if len(parts) > 8 else 0.0,
+            }
+        )
+
+    name = str(data.get("name") or code)
+    out = {
+        "code": code,
+        "name": name,
+        "market": market,
+        "period": period,
+        "source": "eastmoney",
+        "bars": bars,
+    }
+    if indicators:
+        names = [x.strip() for x in indicators.split(",") if x.strip()]
+        if names:
+            out["indicators"] = compute_indicators(bars, names)
+    return out
+
+
+def _f(v) -> float:
+    try:
+        if v is None or v == "" or v == "-":
+            return 0.0
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0

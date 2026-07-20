@@ -1,1 +1,77 @@
-# 妯℃嫙鐩樹氦鏄撶綉涓婄嚎閮ㄧ讲璇存槑  > **涓嶈浣跨敤 Netlify**锛堜細 Page not found锛夈€傛湰椤圭洰鏄?FastAPI 鍚庣鏈嶅姟銆? ---  ## A. 鎴戝凡鏇夸綘鍑嗗濂界殑鏂囦欢  | 鏂囦欢 | 浣滅敤 | |------|------| | `Procfile` | 閫氱敤鍚姩鍛戒护 | | `runtime.txt` | Python 3.12 | | `render.yaml` | Render 涓€閿摑鍥?| | `Dockerfile` | Docker / Fly.io 澶囩敤 | | `requirements.txt` | 渚濊禆 |  ---  ## B. 浣犻渶瑕佹墜鍔ㄥ畬鎴愮殑姝ラ锛堢害 10 鍒嗛挓锛? ### 1锛夋妸浠ｇ爜鏀惧埌 GitHub  鏈湴宸插畬鎴愰娆?commit锛坄886c509`锛夈€傝繕闇€鐧诲綍 GitHub 鍚庢帹閫侊細  ```powershell cd C:\Users\36128\paper-trading # 瀹夎杩?GitHub CLI 鍚庯紝鍦ㄧ粓绔櫥褰曪紙浼氭墦寮€娴忚鍣級 & "C:\Program Files\GitHub CLI\gh.exe" auth login --web --git-protocol https # 鍒涘缓浠撳簱骞舵帹閫侊紙浜岄€変竴锛?& "C:\Program Files\GitHub CLI\gh.exe" repo create paper-trading --public --source=. --remote=origin --push # 鎴栨墜鍔細鍏堝湪 https://github.com/new 寤虹┖浠撳簱锛屽啀锛?# git remote add origin https://github.com/<浣犵殑鐢ㄦ埛鍚?/paper-trading.git # git branch -M main # git push -u origin main ```  ### 2锛夊湪 Render 閮ㄧ讲  1. 鎵撳紑 https://dashboard.render.com 娉ㄥ唽/鐧诲綍锛堝彲鐢?GitHub 鐧诲綍锛?2. **New** 鈫?**Web Service** 3. 杩炴帴鍒氭墠鐨?`paper-trading` 浠撳簱 4. 濉啓锛?   - **Name**: `paper-trading`    - **Language**: Python 3    - **Build Command**: `pip install -r requirements.txt`    - **Start Command**: `python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT` 5. 璁″垝鍙€?Free 6. 鐐瑰嚮 **Create Web Service**锛岀瓑寰?Deploy 鎴愬姛 7. 鎵撳紑 Render 缁欑殑缃戝潃锛屼緥濡?`https://paper-trading-xxxx.onrender.com`  涔熷彲锛?*New** 鈫?**Blueprint** 鈫?閫夋嫨浠撳簱锛岃嚜鍔ㄨ鍙?`render.yaml`銆? ### 3锛夐獙璇? - 鎵撳紑棣栭〉搴旂湅鍒版杩庨〉锛堜笉鏄?Page not found锛?- 璁块棶 `/api/health` 搴旇繑鍥?`{"ok": true, ...}`  ---  ## C. 娉ㄦ剰浜嬮」  - Free 瀹炰緥涓€娈垫椂闂存棤璁块棶浼氫紤鐪狅紝棣栨鎵撳紑鍙兘瑕佺瓑 30鈥?0 绉?- SQLite 鍦ㄥ厤璐瑰疄渚嬮噸鍚悗鍙兘涓㈡暟鎹紱瀛︿範婕旂ず鍙敤锛屾寮忛暱鏈熸暟鎹缓璁互鍚庢崲 Postgres - 鍥藉唴璁块棶 Render 鍩熷悕鍋跺彂杈冩參锛屽睘缃戠粶闂  ---  ## D. 鏈湴杩愯锛堜笉鍙橈級  鍙屽嚮 `鍚姩缃戠珯.bat`锛屾垨锛? ```powershell cd C:\Users\36128\paper-trading python -m app.main ```  娴忚鍣ㄦ墦寮€ http://127.0.0.1:8765
+# 模拟盘交易网上线部署说明
+
+> **不要使用 Netlify**（会 Page not found）。本项目是 FastAPI 后端服务。
+
+---
+
+## A. 我已替你准备好的文件
+
+| 文件 | 作用 |
+|------|------|
+| `Procfile` | 通用启动命令 |
+| `runtime.txt` | Python 3.12 |
+| `render.yaml` | Render 一键蓝图 |
+| `Dockerfile` | Docker / Fly.io 备用 |
+| `requirements.txt` | 依赖 |
+
+---
+
+## B. 你需要手动完成的步骤（约 10 分钟）
+
+### 1）把代码放到 GitHub
+
+本地已完成首次 commit（`886c509`）。还需登录 GitHub 后推送：
+
+```powershell
+cd C:\Users\36128\paper-trading
+# 安装过 GitHub CLI 后，在终端登录（会打开浏览器）
+& "C:\Program Files\GitHub CLI\gh.exe" auth login --web --git-protocol https
+# 创建仓库并推送（二选一）
+& "C:\Program Files\GitHub CLI\gh.exe" repo create paper-trading --public --source=. --remote=origin --push
+# 或手动：先在 https://github.com/new 建空仓库，再：
+# git remote add origin https://github.com/<你的用户名>/paper-trading.git
+# git branch -M main
+# git push -u origin main
+```
+
+### 2）在 Render 部署
+
+1. 打开 https://dashboard.render.com 注册/登录（可用 GitHub 登录）
+2. **New** → **Web Service**
+3. 连接刚才的 `paper-trading` 仓库
+4. 填写：
+   - **Name**: `paper-trading`
+   - **Language**: Python 3
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+5. 计划可选 Free
+6. 点击 **Create Web Service**，等待 Deploy 成功
+7. 打开 Render 给的网址，例如 `https://paper-trading-xxxx.onrender.com`
+
+也可：**New** → **Blueprint** → 选择仓库，自动读取 `render.yaml`。
+
+### 3）验证
+
+- 打开首页应看到欢迎页（不是 Page not found）
+- 访问 `/api/health` 应返回 `{"ok": true, ...}`
+
+---
+
+## C. 注意事项
+
+- Free 实例一段时间无访问会休眠，首次打开可能要等 30–60 秒
+- SQLite 在免费实例重启后可能丢数据；学习演示可用，正式长期数据建议以后换 Postgres
+- 国内访问 Render 域名偶发较慢，属网络问题
+
+---
+
+## D. 本地运行（不变）
+
+双击 `启动网站.bat`，或：
+
+```powershell
+cd C:\Users\36128\paper-trading
+python -m app.main
+```
+
+浏览器打开 http://127.0.0.1:8765

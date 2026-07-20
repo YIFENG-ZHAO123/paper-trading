@@ -1,1 +1,352 @@
-<!DOCTYPE html> <html lang="zh-CN"> <head>   <meta charset="UTF-8" />   <meta name="viewport" content="width=device-width, initial-scale=1" />   <meta name="description" content="妯℃嫙鐩樹氦鏄撶綉 鈥?鐙珛璐︽埛銆佸疄鏃惰鎯呫€並绾夸笌铏氭嫙浜ゆ槗" />   <title>妯℃嫙鐩樹氦鏄撶綉</title>   <link rel="stylesheet" href="/static/style.css?v=8" />   <script src="https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js"></script> </head> <body class="on-welcome">   <div class="site">     <!-- ========== 绗竴灞忥細娆㈣繋 / 璐︽埛璇存槑 ========== -->     <section id="screen-welcome" class="screen screen-welcome" aria-label="娆㈣繋椤?>       <header class="welcome-top">         <span class="logo">妯℃嫙鐩?/span>         <button type="button" id="helpOpenBtn" class="btn-text">璐︽埛璇存槑</button>       </header>        <div class="welcome-center">         <p class="eyebrow">Paper Trading</p>         <h1>鑱旂綉妯℃嫙浜ゆ槗銆?/h1>         <p class="hero-lead">           姣忎綅璁垮鑷姩鑾峰緱鐙珛铏氭嫙璐︽埛锛岃祫閲戜笌鎸佷粨浜掍笉褰卞搷銆?          璇峰厛浜嗚В璐︽埛瑙勫垯锛屽啀杩涘叆浜ゆ槗銆?        </p>          <div class="welcome-help-card" id="help">           <h2>璐︽埛浣跨敤璇存槑</h2>           <ul class="welcome-points">             <li><strong>鑷姩寮€鎴?/strong> 鈥?棣栨璁块棶鍗冲垱寤虹嫭绔嬭处鎴凤紝鍒濆 100 涓囪櫄鎷熻祫閲戙€?/li>             <li><strong>浜掍笉褰卞搷</strong> 鈥?璧勯噾銆佹寔浠撱€佹垚浜ゃ€佽嚜閫変粎灞炰簬浣犳湰浜恒€?/li>             <li><strong>璐︽埛鐭彿</strong> 鈥?杩涘叆鍚庡彸涓婅鍙煡鐪嬶紱鎹㈡祻瑙堝櫒鎴栨棤鐥曟ā寮忎細寮€鏂拌处鎴枫€?/li>             <li><strong>鏂板紑 / 閲嶇疆</strong> 鈥?鍙殢鏃舵柊寮€璐︽埛锛屾垨閲嶇疆褰撳墠璐︽埛璧勯噾涓庢寔浠撱€?/li>             <li><strong>鍏嶈矗澹版槑</strong> 鈥?闈炵湡瀹炰氦鏄擄紝浠呬緵瀛︿範锛屼笉鏋勬垚鎶曡祫寤鸿銆?/li>           </ul>           <button type="button" class="btn-link" id="helpOpenBtn2">闃呰瀹屾暣璇存槑</button>         </div>          <div class="hero-cta">           <button type="button" class="btn-primary" id="startTradeBtn">寮€濮嬩氦鏄?/button>         </div>       </div>        <p class="welcome-foot">Copyright 漏 妯℃嫙鐩樹氦鏄撶綉. 铏氭嫙璧勯噾 路 闈炵湡瀹炰氦鏄?/p>     </section>      <!-- ========== 绗簩灞忥細姝ｅ紡浜ゆ槗 ========== -->     <div id="screen-trade" class="screen screen-trade" hidden aria-label="浜ゆ槗鐣岄潰">       <header class="navbar">         <div class="nav-inner">           <a href="#summary" class="logo" aria-label="浜ゆ槗棣栭〉">妯℃嫙鐩?/a>           <nav class="nav" aria-label="涓诲鑸?>             <a href="#trade">浜ゆ槗</a>             <a href="#screener">閫夎偂</a>             <a href="#chart">K绾?/a>             <a href="#performance">缁╂晥</a>             <a href="#positions">鎸佷粨</a>           </nav>           <div class="nav-right">             <span class="user-chip">璐︽埛 <strong id="userShortId">----</strong></span>             <button type="button" id="helpOpenBtn3" class="btn-text">浣跨敤璇存槑</button>             <button type="button" id="newAccountBtn" class="btn-text">鏂板紑璐︽埛</button>             <button type="button" id="backWelcomeBtn" class="btn-text">杩斿洖棣栭〉</button>             <span class="live-dot" title="琛屾儏鍒锋柊"><span id="tickClock">--:--:--</span></span>           </div>         </div>       </header>        <main>         <section class="strip" id="summary">           <div class="strip-inner cards">             <div class="stat">               <span>鍙敤璧勯噾</span>               <strong id="cash">-</strong>             </div>             <div class="stat">               <span>鎸佷粨甯傚€?/span>               <strong id="mv">-</strong>             </div>             <div class="stat">               <span>鎬昏祫浜?/span>               <strong id="equity">-</strong>             </div>           </div>         </section>          <section class="section" id="trade">           <div class="section-inner grid-2">             <article class="panel" id="watch">               <h2>鑷€夎偂</h2>               <p class="section-desc">鏀惰棌鏍囩殑锛屼竴閿€変腑鎴栧揩涔般€?/p>               <div class="watch-add">                 <input id="watchCode" placeholder="杈撳叆浠ｇ爜锛屽 113052" />                 <button type="button" id="watchAddBtn" class="btn-primary compact">鍔犲叆</button>               </div>               <div class="table-wrap">                 <table>                   <thead>                     <tr>                       <th>浠ｇ爜</th><th>鍚嶇О</th><th>鐜颁环</th><th>娑ㄨ穼%</th><th>鎿嶄綔</th>                     </tr>                   </thead>                   <tbody id="watchBody"></tbody>                 </table>               </div>             </article>              <article class="panel">               <h2>涓嬪崟</h2>               <p class="section-desc">榛樿甯備环鍗曪紝浠锋牸闅忚鎯呰嚜鍔ㄥ～鍐欍€?/p>               <form id="orderForm" class="form-stack">                 <div class="row">                   <label>浠ｇ爜 <input name="code" id="codeInput" value="113052" required /></label>                   <label>鏂瑰悜                     <select name="side" id="sideInput">                       <option value="buy">涔板叆</option>                       <option value="sell">鍗栧嚭</option>                     </select>                   </label>                   <label>鏁伴噺 <input name="qty" id="qtyInput" type="number" min="1" step="1" value="10" required /></label>                 </div>                 <div class="row price-row">                   <label class="grow">浠锋牸                     <input name="price" id="priceInput" type="number" step="0.001" placeholder="甯備环" />                   </label>                   <label class="check">                     <input type="checkbox" id="marketChk" checked />                     甯備环锛堣嚜鍔ㄥ～鐜颁环锛?                  </label>                   <button type="button" id="addWatchFromOrder" class="btn-text">鍔犲叆鑷€?/button>                 </div>                 <div class="quote-bar">                   <span id="quoteName">-</span>                   <strong id="quotePrice" class="price">-</strong>                   <span id="quoteChg">-</span>                   <span id="quoteNote" class="muted"></span>                 </div>                 <div class="actions">                   <button type="submit" id="submitBtn" class="btn-primary">鎻愪氦甯備环鍗?/button>                   <button type="button" id="quoteBtn" class="btn-secondary">鍒锋柊琛屾儏</button>                   <button type="button" id="loadChartBtn" class="btn-secondary">鍔犺浇K绾?/button>                 </div>               </form>               <p id="msg" class="msg"></p>             </article>           </div>         </section>          <section class="section alt" id="screener">           <div class="section-inner">             <h2>鏉′欢閫夎偂</h2>             <p class="section-desc">鎸夋定璺屽箙銆佹垚浜ら銆佹崲鎵嬩笌浠锋牸绛涢€?A 鑲℃垨鍙浆鍊猴紝涓€閿姞鍏ヨ嚜閫夋垨涓嬪崟銆?/p>             <form id="screenerForm" class="screener-form">               <label>鑼冨洿                 <select id="scUniverse">                   <option value="stock">A鑲?/option>                   <option value="cb">鍙浆鍊?/option>                   <option value="all">鍏ㄩ儴</option>                 </select>               </label>               <label>娑ㄨ穼骞呪墺%                 <input id="scMinChg" type="number" step="0.1" placeholder="濡?2" />               </label>               <label>娑ㄨ穼骞呪墹%                 <input id="scMaxChg" type="number" step="0.1" placeholder="濡?9.5" />               </label>               <label>鎴愪氦棰濃墺涓?                <input id="scMinAmt" type="number" step="1" placeholder="濡?5000" />               </label>               <label>鎹㈡墜鈮?                 <input id="scMinTurn" type="number" step="0.1" placeholder="濡?3" />               </label>               <label>浠锋牸鍖洪棿                 <div class="price-range">                   <input id="scMinPx" type="number" step="0.01" placeholder="鏈€浣? />                   <span>鈥?/span>                   <input id="scMaxPx" type="number" step="0.01" placeholder="鏈€楂? />                 </div>               </label>               <label>鎺掑簭                 <select id="scSort">                   <option value="change_pct">娑ㄨ穼骞?/option>                   <option value="amount">鎴愪氦棰?/option>                   <option value="turnover">鎹㈡墜</option>                   <option value="price">浠锋牸</option>                 </select>               </label>               <button type="submit" class="btn-primary compact">绛涢€?/button>             </form>             <p id="screenerMsg" class="msg"></p>             <div class="table-wrap surface">               <table>                 <thead>                   <tr>                     <th>浠ｇ爜</th><th>鍚嶇О</th><th>鐜颁环</th><th>娑ㄨ穼%</th>                     <th>鎴愪氦棰?/th><th>鎹㈡墜%</th><th>鎿嶄綔</th>                   </tr>                 </thead>                 <tbody id="screenerBody"></tbody>               </table>             </div>           </div>         </section>          <section class="section" id="chart">           <div class="section-inner">             <div class="chart-head">               <div>                 <h2>K绾?/h2>                 <p class="section-desc" id="chartTitle">閫夋嫨鏍囩殑鍚庡睍绀鸿蛋鍔?/p>               </div>               <div class="period-tabs" id="periodTabs">                 <button type="button" data-period="5m">5鍒?/button>                 <button type="button" data-period="15m">15鍒?/button>                 <button type="button" data-period="60m">60鍒?/button>                 <button type="button" data-period="day" class="active">鏃</button>                 <button type="button" data-period="week">鍛↘</button>               </div>             </div>             <div class="indicator-bar" id="indicatorBar">               <label><input type="checkbox" data-ind="ma" checked /> MA</label>               <label><input type="checkbox" data-ind="boll" /> BOLL</label>               <label><input type="checkbox" data-ind="macd" /> MACD</label>               <label><input type="checkbox" data-ind="rsi" /> RSI</label>             </div>             <div id="chartBox" class="chart"></div>             <div id="chartOsc" class="chart chart-osc" hidden></div>           </div>         </section>          <section class="section alt" id="performance">           <div class="section-inner">             <div class="chart-head">               <div>                 <h2>璐︽埛缁╂晥</h2>                 <p class="section-desc">鍩轰簬浣犵殑妯℃嫙鎴愪氦閲嶅缓鏉冪泭鏇茬嚎涓庡叧閿寚鏍囥€?/p>               </div>               <button type="button" id="perfRefreshBtn" class="btn-secondary">鍒锋柊缁╂晥</button>             </div>             <div class="perf-cards" id="perfCards">               <div class="stat"><span>鎬绘敹鐩?/span><strong id="perfPnl">-</strong></div>               <div class="stat"><span>鏀剁泭鐜?/span><strong id="perfRet">-</strong></div>               <div class="stat"><span>鏈€澶у洖鎾?/span><strong id="perfDd">-</strong></div>               <div class="stat"><span>鑳滅巼</span><strong id="perfWin">-</strong></div>               <div class="stat"><span>绮楃硻澶忔櫘</span><strong id="perfSharpe">-</strong></div>               <div class="stat"><span>鎴愪氦绗旀暟</span><strong id="perfTrades">-</strong></div>             </div>             <div id="perfChart" class="chart chart-perf"></div>           </div>         </section>          <section class="section" id="positions">           <div class="section-inner">             <h2>鎸佷粨</h2>             <p class="section-desc">鐜颁环涓庣泩浜忕害姣?2 绉掓洿鏂般€?/p>             <div class="table-wrap surface">               <table>                 <thead>                   <tr>                     <th>浠ｇ爜</th><th>鍚嶇О</th><th>鏁伴噺</th><th>鎴愭湰</th>                     <th>鐜颁环</th><th>甯傚€?/th><th>鐩堜簭</th><th>鎿嶄綔</th>                   </tr>                 </thead>                 <tbody id="posBody"></tbody>               </table>             </div>           </div>         </section>          <section class="section alt" id="orders">           <div class="section-inner">             <h2>鎴愪氦璁板綍</h2>             <p class="section-desc">浠呮樉绀哄綋鍓嶈处鎴风殑鎴愪氦銆?/p>             <div class="table-wrap surface">               <table>                 <thead>                   <tr>                     <th>鏃堕棿</th><th>鏂瑰悜</th><th>浠ｇ爜</th><th>鍚嶇О</th>                     <th>鏁伴噺</th><th>浠锋牸</th><th>閲戦</th><th>澶囨敞</th>                   </tr>                 </thead>                 <tbody id="ordBody"></tbody>               </table>             </div>             <button type="button" id="resetBtn" class="btn-danger">閲嶇疆褰撳墠璐︽埛</button>           </div>         </section>       </main>        <footer class="footer">         <div class="footer-inner">           <div class="footer-cols">             <div>               <h4>妯℃嫙鐩樹氦鏄撶綉</h4>               <ul>                 <li><a href="#trade">浜ゆ槗</a></li>                 <li><a href="#screener">閫夎偂</a></li>                 <li><a href="#performance">缁╂晥</a></li>                 <li><a href="#chart">K绾?/a></li>               </ul>             </div>             <div>               <h4>璐︽埛</h4>               <ul>                 <li><button type="button" class="footer-btn" id="footerNewAcc">鏂板紑璐︽埛</button></li>                 <li><button type="button" class="footer-btn" id="footerHelp">璐︽埛璇存槑</button></li>                 <li><button type="button" class="footer-btn" id="footerHome">杩斿洖棣栭〉</button></li>               </ul>             </div>             <div>               <h4>娉曞緥</h4>               <ul>                 <li>铏氭嫙璧勯噾 路 闈炵湡瀹炰氦鏄?/li>                 <li>浠呬緵瀛︿範婕旂ず</li>                 <li>涓嶆瀯鎴愭姇璧勫缓璁?/li>               </ul>             </div>           </div>           <p class="copyright">Copyright 漏 妯℃嫙鐩樹氦鏄撶綉. 淇濈暀鎵€鏈夋潈鍒┿€?/p>         </div>       </footer>     </div>   </div>    <div class="modal-backdrop" id="helpModal" hidden>     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="helpModalTitle">       <div class="modal-head">         <h2 id="helpModalTitle">璐︽埛浣跨敤璇存槑</h2>         <button type="button" class="modal-close" id="helpCloseBtn" aria-label="鍏抽棴">脳</button>       </div>       <div class="modal-body">         <ol class="help-list">           <li><strong>鑷姩寮€鎴枫€?/strong>棣栨璁块棶浼氬啓鍏ユ祻瑙堝櫒 Cookie锛屽垱寤虹嫭绔嬫ā鎷熻处鎴凤紝鍒濆璧勯噾 100 涓囪櫄鎷熻祫閲戙€?/li>           <li><strong>浜掍笉褰卞搷銆?/strong>姣忎釜璐︽埛鐨勮祫閲戙€佹寔浠撱€佹垚浜ゃ€佽嚜閫夌浉浜掗殧绂伙紝鍏朵粬璁垮鏃犳硶鎿嶄綔浣犵殑璐︽埛銆?/li>           <li><strong>璐︽埛鐭彿銆?/strong>杩涘叆浜ゆ槗鍚庡彸涓婅鍙煡鐪嬬煭鍙凤紱娓?Cookie銆佹崲娴忚鍣ㄦ垨鏃犵棔妯″紡浼氳繘鍏ユ柊璐︽埛銆?/li>           <li><strong>鏂板紑璐︽埛銆?/strong>鐐瑰嚮銆屾柊寮€璐︽埛銆嶇珛鍗冲垏鎹㈠埌鏂扮殑绌虹櫧璐︽埛锛堜粛涓?100 涓囷級銆?/li>           <li><strong>閲嶇疆璐︽埛銆?/strong>浠呮竻绌哄綋鍓嶈处鎴锋寔浠撲笌鎴愪氦骞舵仮澶嶈祫閲戯紝涓嶅奖鍝嶄粬浜恒€?/li>           <li><strong>甯備环涓嬪崟銆?/strong>榛樿鎸夋渶鏂拌鎯呮挳鍚堬紱鍋滅墝/鏃犻噺鏃跺彲鑳戒娇鐢ㄦ槰鏀讹紝鐣岄潰浼氭彁绀恒€?/li>           <li><strong>鍏嶈矗澹版槑銆?/strong>鏈珯闈炶瘉鍒稿叕鍙革紝鏁版嵁鏉ヨ嚜鍏紑鎺ュ彛锛屼粎渚涘涔狅紝涓嶆瀯鎴愭姇璧勫缓璁€?/li>         </ol>         <p class="modal-hint">褰撳墠璐︽埛鐭彿锛?strong id="helpShortId">----</strong>锛堣繘鍏ヤ氦鏄撳悗鑷姩鏇存柊锛?/p>       </div>       <div class="modal-foot">         <button type="button" class="btn-primary" id="helpGotIt">鐭ラ亾浜?/button>       </div>     </div>   </div>    <script src="/static/app.js?v=8"></script> </body> </html>
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="模拟盘交易网 — 独立账户、实时行情、K线与虚拟交易" />
+  <title>模拟盘交易网</title>
+  <link rel="stylesheet" href="/static/style.css?v=8" />
+  <script src="https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body class="on-welcome">
+  <div class="site">
+    <!-- ========== 第一屏：欢迎 / 账户说明 ========== -->
+    <section id="screen-welcome" class="screen screen-welcome" aria-label="欢迎页">
+      <header class="welcome-top">
+        <span class="logo">模拟盘</span>
+        <button type="button" id="helpOpenBtn" class="btn-text">账户说明</button>
+      </header>
+
+      <div class="welcome-center">
+        <p class="eyebrow">Paper Trading</p>
+        <h1>联网模拟交易。</h1>
+        <p class="hero-lead">
+          每位访客自动获得独立虚拟账户，资金与持仓互不影响。
+          请先了解账户规则，再进入交易。
+        </p>
+
+        <div class="welcome-help-card" id="help">
+          <h2>账户使用说明</h2>
+          <ul class="welcome-points">
+            <li><strong>自动开户</strong> — 首次访问即创建独立账户，初始 100 万虚拟资金。</li>
+            <li><strong>互不影响</strong> — 资金、持仓、成交、自选仅属于你本人。</li>
+            <li><strong>账户短号</strong> — 进入后右上角可查看；换浏览器或无痕模式会开新账户。</li>
+            <li><strong>新开 / 重置</strong> — 可随时新开账户，或重置当前账户资金与持仓。</li>
+            <li><strong>免责声明</strong> — 非真实交易，仅供学习，不构成投资建议。</li>
+          </ul>
+          <button type="button" class="btn-link" id="helpOpenBtn2">阅读完整说明</button>
+        </div>
+
+        <div class="hero-cta">
+          <button type="button" class="btn-primary" id="startTradeBtn">开始交易</button>
+        </div>
+      </div>
+
+      <p class="welcome-foot">Copyright © 模拟盘交易网. 虚拟资金 · 非真实交易</p>
+    </section>
+
+    <!-- ========== 第二屏：正式交易 ========== -->
+    <div id="screen-trade" class="screen screen-trade" hidden aria-label="交易界面">
+      <header class="navbar">
+        <div class="nav-inner">
+          <a href="#summary" class="logo" aria-label="交易首页">模拟盘</a>
+          <nav class="nav" aria-label="主导航">
+            <a href="#trade">交易</a>
+            <a href="#screener">选股</a>
+            <a href="#chart">K线</a>
+            <a href="#performance">绩效</a>
+            <a href="#positions">持仓</a>
+          </nav>
+          <div class="nav-right">
+            <span class="user-chip">账户 <strong id="userShortId">----</strong></span>
+            <button type="button" id="helpOpenBtn3" class="btn-text">使用说明</button>
+            <button type="button" id="newAccountBtn" class="btn-text">新开账户</button>
+            <button type="button" id="backWelcomeBtn" class="btn-text">返回首页</button>
+            <span class="live-dot" title="行情刷新"><span id="tickClock">--:--:--</span></span>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        <section class="strip" id="summary">
+          <div class="strip-inner cards">
+            <div class="stat">
+              <span>可用资金</span>
+              <strong id="cash">-</strong>
+            </div>
+            <div class="stat">
+              <span>持仓市值</span>
+              <strong id="mv">-</strong>
+            </div>
+            <div class="stat">
+              <span>总资产</span>
+              <strong id="equity">-</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="trade">
+          <div class="section-inner grid-2">
+            <article class="panel" id="watch">
+              <h2>自选股</h2>
+              <p class="section-desc">收藏标的，一键选中或快买。</p>
+              <div class="watch-add">
+                <input id="watchCode" placeholder="输入代码，如 113052" />
+                <button type="button" id="watchAddBtn" class="btn-primary compact">加入</button>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>代码</th><th>名称</th><th>现价</th><th>涨跌%</th><th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="watchBody"></tbody>
+                </table>
+              </div>
+            </article>
+
+            <article class="panel">
+              <h2>下单</h2>
+              <p class="section-desc">默认市价单，价格随行情自动填写。</p>
+              <form id="orderForm" class="form-stack">
+                <div class="row">
+                  <label>代码 <input name="code" id="codeInput" value="113052" required /></label>
+                  <label>方向
+                    <select name="side" id="sideInput">
+                      <option value="buy">买入</option>
+                      <option value="sell">卖出</option>
+                    </select>
+                  </label>
+                  <label>数量 <input name="qty" id="qtyInput" type="number" min="1" step="1" value="10" required /></label>
+                </div>
+                <div class="row price-row">
+                  <label class="grow">价格
+                    <input name="price" id="priceInput" type="number" step="0.001" placeholder="市价" />
+                  </label>
+                  <label class="check">
+                    <input type="checkbox" id="marketChk" checked />
+                    市价（自动填现价）
+                  </label>
+                  <button type="button" id="addWatchFromOrder" class="btn-text">加入自选</button>
+                </div>
+                <div class="quote-bar">
+                  <span id="quoteName">-</span>
+                  <strong id="quotePrice" class="price">-</strong>
+                  <span id="quoteChg">-</span>
+                  <span id="quoteNote" class="muted"></span>
+                </div>
+                <div class="actions">
+                  <button type="submit" id="submitBtn" class="btn-primary">提交市价单</button>
+                  <button type="button" id="quoteBtn" class="btn-secondary">刷新行情</button>
+                  <button type="button" id="loadChartBtn" class="btn-secondary">加载K线</button>
+                </div>
+              </form>
+              <p id="msg" class="msg"></p>
+            </article>
+          </div>
+        </section>
+
+        <section class="section alt" id="screener">
+          <div class="section-inner">
+            <h2>条件选股</h2>
+            <p class="section-desc">按涨跌幅、成交额、换手与价格筛选 A 股或可转债，一键加入自选或下单。</p>
+            <form id="screenerForm" class="screener-form">
+              <label>范围
+                <select id="scUniverse">
+                  <option value="stock">A股</option>
+                  <option value="cb">可转债</option>
+                  <option value="all">全部</option>
+                </select>
+              </label>
+              <label>涨跌幅≥%
+                <input id="scMinChg" type="number" step="0.1" placeholder="如 2" />
+              </label>
+              <label>涨跌幅≤%
+                <input id="scMaxChg" type="number" step="0.1" placeholder="如 9.5" />
+              </label>
+              <label>成交额≥万
+                <input id="scMinAmt" type="number" step="1" placeholder="如 5000" />
+              </label>
+              <label>换手≥%
+                <input id="scMinTurn" type="number" step="0.1" placeholder="如 3" />
+              </label>
+              <label>价格区间
+                <div class="price-range">
+                  <input id="scMinPx" type="number" step="0.01" placeholder="最低" />
+                  <span>—</span>
+                  <input id="scMaxPx" type="number" step="0.01" placeholder="最高" />
+                </div>
+              </label>
+              <label>排序
+                <select id="scSort">
+                  <option value="change_pct">涨跌幅</option>
+                  <option value="amount">成交额</option>
+                  <option value="turnover">换手</option>
+                  <option value="price">价格</option>
+                </select>
+              </label>
+              <button type="submit" class="btn-primary compact">筛选</button>
+            </form>
+            <p id="screenerMsg" class="msg"></p>
+            <div class="table-wrap surface">
+              <table>
+                <thead>
+                  <tr>
+                    <th>代码</th><th>名称</th><th>现价</th><th>涨跌%</th>
+                    <th>成交额</th><th>换手%</th><th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="screenerBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="chart">
+          <div class="section-inner">
+            <div class="chart-head">
+              <div>
+                <h2>K线</h2>
+                <p class="section-desc" id="chartTitle">选择标的后展示走势</p>
+              </div>
+              <div class="period-tabs" id="periodTabs">
+                <button type="button" data-period="5m">5分</button>
+                <button type="button" data-period="15m">15分</button>
+                <button type="button" data-period="60m">60分</button>
+                <button type="button" data-period="day" class="active">日K</button>
+                <button type="button" data-period="week">周K</button>
+              </div>
+            </div>
+            <div class="indicator-bar" id="indicatorBar">
+              <label><input type="checkbox" data-ind="ma" checked /> MA</label>
+              <label><input type="checkbox" data-ind="boll" /> BOLL</label>
+              <label><input type="checkbox" data-ind="macd" /> MACD</label>
+              <label><input type="checkbox" data-ind="rsi" /> RSI</label>
+            </div>
+            <div id="chartBox" class="chart"></div>
+            <div id="chartOsc" class="chart chart-osc" hidden></div>
+          </div>
+        </section>
+
+        <section class="section alt" id="performance">
+          <div class="section-inner">
+            <div class="chart-head">
+              <div>
+                <h2>账户绩效</h2>
+                <p class="section-desc">基于你的模拟成交重建权益曲线与关键指标。</p>
+              </div>
+              <button type="button" id="perfRefreshBtn" class="btn-secondary">刷新绩效</button>
+            </div>
+            <div class="perf-cards" id="perfCards">
+              <div class="stat"><span>总收益</span><strong id="perfPnl">-</strong></div>
+              <div class="stat"><span>收益率</span><strong id="perfRet">-</strong></div>
+              <div class="stat"><span>最大回撤</span><strong id="perfDd">-</strong></div>
+              <div class="stat"><span>胜率</span><strong id="perfWin">-</strong></div>
+              <div class="stat"><span>粗糙夏普</span><strong id="perfSharpe">-</strong></div>
+              <div class="stat"><span>成交笔数</span><strong id="perfTrades">-</strong></div>
+            </div>
+            <div id="perfChart" class="chart chart-perf"></div>
+          </div>
+        </section>
+
+        <section class="section" id="positions">
+          <div class="section-inner">
+            <h2>持仓</h2>
+            <p class="section-desc">现价与盈亏约每 2 秒更新。</p>
+            <div class="table-wrap surface">
+              <table>
+                <thead>
+                  <tr>
+                    <th>代码</th><th>名称</th><th>数量</th><th>成本</th>
+                    <th>现价</th><th>市值</th><th>盈亏</th><th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="posBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="section alt" id="orders">
+          <div class="section-inner">
+            <h2>成交记录</h2>
+            <p class="section-desc">仅显示当前账户的成交。</p>
+            <div class="table-wrap surface">
+              <table>
+                <thead>
+                  <tr>
+                    <th>时间</th><th>方向</th><th>代码</th><th>名称</th>
+                    <th>数量</th><th>价格</th><th>金额</th><th>备注</th>
+                  </tr>
+                </thead>
+                <tbody id="ordBody"></tbody>
+              </table>
+            </div>
+            <button type="button" id="resetBtn" class="btn-danger">重置当前账户</button>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <div class="footer-inner">
+          <div class="footer-cols">
+            <div>
+              <h4>模拟盘交易网</h4>
+              <ul>
+                <li><a href="#trade">交易</a></li>
+                <li><a href="#screener">选股</a></li>
+                <li><a href="#performance">绩效</a></li>
+                <li><a href="#chart">K线</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4>账户</h4>
+              <ul>
+                <li><button type="button" class="footer-btn" id="footerNewAcc">新开账户</button></li>
+                <li><button type="button" class="footer-btn" id="footerHelp">账户说明</button></li>
+                <li><button type="button" class="footer-btn" id="footerHome">返回首页</button></li>
+              </ul>
+            </div>
+            <div>
+              <h4>法律</h4>
+              <ul>
+                <li>虚拟资金 · 非真实交易</li>
+                <li>仅供学习演示</li>
+                <li>不构成投资建议</li>
+              </ul>
+            </div>
+          </div>
+          <p class="copyright">Copyright © 模拟盘交易网. 保留所有权利。</p>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="helpModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="helpModalTitle">
+      <div class="modal-head">
+        <h2 id="helpModalTitle">账户使用说明</h2>
+        <button type="button" class="modal-close" id="helpCloseBtn" aria-label="关闭">×</button>
+      </div>
+      <div class="modal-body">
+        <ol class="help-list">
+          <li><strong>自动开户。</strong>首次访问会写入浏览器 Cookie，创建独立模拟账户，初始资金 100 万虚拟资金。</li>
+          <li><strong>互不影响。</strong>每个账户的资金、持仓、成交、自选相互隔离，其他访客无法操作你的账户。</li>
+          <li><strong>账户短号。</strong>进入交易后右上角可查看短号；清 Cookie、换浏览器或无痕模式会进入新账户。</li>
+          <li><strong>新开账户。</strong>点击「新开账户」立即切换到新的空白账户（仍为 100 万）。</li>
+          <li><strong>重置账户。</strong>仅清空当前账户持仓与成交并恢复资金，不影响他人。</li>
+          <li><strong>市价下单。</strong>默认按最新行情撮合；停牌/无量时可能使用昨收，界面会提示。</li>
+          <li><strong>免责声明。</strong>本站非证券公司，数据来自公开接口，仅供学习，不构成投资建议。</li>
+        </ol>
+        <p class="modal-hint">当前账户短号：<strong id="helpShortId">----</strong>（进入交易后自动更新）</p>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn-primary" id="helpGotIt">知道了</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=8"></script>
+</body>
+</html>
